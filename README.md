@@ -152,7 +152,100 @@ fn run_all(self) {
 2. `Some(...)` 是一种模式匹配, 当匹配不成功时, 结束循环; 成功时, 将数据包分配给两个参数, 相当于 `auto [..., ...]`
 
 ## 任务初始化
-通过上述学习就可以看懂 `任务初始化` 代码, 随机化种子那不是重点, 也可以用其他随机方法实现
+通过上述学习就可以看懂 `任务初始化` 代码, 随机化种子那不是重点, 也可以用其他随机方法实现 
+
+## 项目架构流程图
+```Mermaid
+graph TD
+    A([程序启动 main]) --> B[初始化调度器 Scheduler::new]
+    B --> C[调用 random_task 生成任务]
+    
+    subgraph 任务生成阶段
+    C --> D{循环生成 10 个任务}
+    D -->|生成随机参数| E[创建 SimpleTask]
+    E -->|确定优先级| F[调用 scheduler.add_task]
+    F --> G[获取互斥锁 Mutex]
+    G --> H[将任务推入 Vec]
+    H --> I[根据优先级排序 sort_by]
+    I -->|释放锁| D
+    end
+
+    D -->|循环结束| J[调用 scheduler.run_all]
+    
+    subgraph 任务执行阶段
+    J --> K[克隆 Arc 指针]
+    K --> L[开启新线程 thread::spawn]
+    L --> M[获取互斥锁 Mutex]
+    M --> N{Vec 中还有任务吗? while let Some}
+    
+    N -->|有任务| O[弹出任务 pop]
+    O --> P[打印准备运行信息]
+    P --> Q[执行任务 task.execute]
+    Q --> R{执行结果 Result}
+    R -->|Ok| S[打印成功信息]
+    R -->|Err| T[打印错误信息]
+    S --> N
+    T --> N
+    
+    N -->|无任务| U[打印所有任务执行完毕]
+    end
+
+    U --> V[主线程等待子线程结束 join]
+    V --> W([程序结束])
+```
+
+## 所有权 Arc 和 互斥锁 Mutex 的时序图
+``` Mermaid
+sequenceDiagram
+    participant Main as 主线程 (main)
+    participant Scheduler as 调度器 (Scheduler)
+    participant Mutex as 互斥锁 (Mutex<Vec>)
+    participant Worker as 工作线程 (Thread)
+    participant Task as 任务 (SimpleTask)
+
+    Note over Main: 1. 初始化
+    Main->>Scheduler: new()
+    Scheduler-->>Main: 返回实例
+
+    Note over Main: 2. 生成任务
+    loop 10次
+        Main->>Main: 生成随机数据
+        Main->>Scheduler: add_task(priority, task)
+        Scheduler->>Mutex: lock()
+        Mutex-->>Scheduler: 获取数据访问权
+        Scheduler->>Scheduler: push() & sort()
+        Scheduler->>Mutex: unlock() (自动释放)
+    end
+
+    Note over Main: 3. 执行任务
+    Main->>Scheduler: run_all()
+    Scheduler->>Worker: thread::spawn()
+    
+    activate Worker
+    Worker->>Mutex: lock()
+    Mutex-->>Worker: 获取数据访问权
+    
+    loop 直到 Vec 为空
+        Worker->>Worker: tasks.pop()
+        alt 有任务
+            Worker->>Task: execute()
+            alt duration > 5s
+                Task-->>Worker: Err(ExecutionError)
+            else duration <= 5s
+                Task-->>Worker: Ok(())
+            end
+            Worker->>Worker: 打印结果
+        else 无任务
+            Worker->>Worker: 退出循环
+        end
+    end
+    
+    Worker->>Mutex: unlock() (自动释放)
+    deactivate Worker
+    
+    Worker-->>Main: join() 返回
+    Note over Main: 程序结束
+```
 
 ## 问题 & 未来展望
 未测试本代码在更多 `线程` 下的并发安全性, 未实现 `任务错误` 中的 `Timeout` 和 `NotFound`
