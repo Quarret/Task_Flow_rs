@@ -155,7 +155,7 @@ fn run_all(self) {
 通过上述学习就可以看懂 `任务初始化` 代码, 随机化种子那不是重点, 也可以用其他随机方法实现 
 
 ## 项目架构流程图
-```Mermaid
+```mermaid
 graph TD
     A([程序启动 main]) --> B[初始化调度器 Scheduler::new]
     B --> C[调用 random_task 生成任务]
@@ -195,7 +195,7 @@ graph TD
 ```
 
 ## 所有权 Arc 和 互斥锁 Mutex 的时序图
-``` Mermaid
+```mermaid
 sequenceDiagram
     participant Main as 主线程 (main)
     participant Scheduler as 调度器 (Scheduler)
